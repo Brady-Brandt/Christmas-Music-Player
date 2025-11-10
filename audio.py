@@ -90,7 +90,7 @@ notes = [
 
 
 
-mid = mido.MidiFile('elise.mid')
+mid = mido.MidiFile('carolofbells.mid')
 
 
 ticks_per_beat = mid.ticks_per_beat
@@ -132,7 +132,7 @@ for msg in merged:
             freq = notes[msg.note]
             channel1_data.append((freq, start, duration))
         elif msg.note in active_c2_notes:
-            start = active_c2_notes.pop(msg.note)
+            start= active_c2_notes.pop(msg.note)
             duration = current_time - start
             freq = notes[msg.note]
             channel2_data.append((freq, start, duration))
@@ -143,8 +143,9 @@ for i, track in enumerate(mid.tracks):
         if msg.type == "program_change":
             print(f"  Channel {msg.channel}, Program {msg.program}")
 
-for c in channel1_data:
-    print(c)
+
+
+
 
 def remove_chords(channel_data):
     new_data = []
@@ -154,56 +155,125 @@ def remove_chords(channel_data):
             continue
         current_data = channel_data[i]
 
+
+        if current_data[2] == 0:
+            high_score = 0
+        else:
+            high_score = current_data[0]
+        high_score_index = i 
+
+        if current_data[2] > 1:
+            print(current_data)
+            continue
+
+        skip_note = False
         for j in range(i + 1, len(channel_data)):
             next_note_data = channel_data[j]
 
-            if math.isclose(next_note_data[1], current_data[1]):
-                removed_indicies.append(j)
-            # if the next note is still playing while the current note is playing
-            # skip that note
-            elif (next_note_data[1] < current_data[1] + current_data[2]):
-                removed_indicies.append(j)
-            else:
+            if current_data[1] + current_data[2] > next_note_data[1] + next_note_data[2]:
+                skip_note = True
                 break
 
-        new_data.append(current_data)
+            if (next_note_data[1] > current_data[1] + current_data[2]) or math.isclose(next_note_data[1], current_data[1] + current_data[2], rel_tol=1e6):
+                break
+
+            if next_note_data[2] == 0:
+                new_score = 0
+            else:
+                new_score = next_note_data[0]
+
+            if new_score > high_score:
+                high_score = new_score
+                high_score_index = j
+            
+        if skip_note:
+            continue
+        if high_score_index != i:
+            removed_indicies.append(i)
+        else:
+            new_data.append(channel_data[high_score_index])
     return new_data
 
 print(current_time)
 new_channel1 = remove_chords(channel1_data)
+
+for data in new_channel1:
+    print(data)
+
 print(len(channel1_data), len(new_channel1))
 new_channel2 = remove_chords(channel2_data)
 
-for i in range(0, 15):
-    print(channel1_data[i], new_channel1[i])
+
+def get_timer0_prescalar(data):
+    CLOCK_SPEED = 10_000_000
+    UINT16_MAX = 65535
+    clock = lambda data, ps: int(data[2] * CLOCK_SPEED / ps)
+    if clock(data, 1) < UINT16_MAX:
+        return (clock(data, 1), 0x88)
+    elif clock(data, 2) < UINT16_MAX:
+        return (clock(data, 2), 0x80)
+    elif clock(data, 4) < UINT16_MAX:
+        return (clock(data, 4), 0x81)
+    elif clock(data, 8) < UINT16_MAX:
+        return (clock(data, 8), 0x82)
+    elif clock(data, 16) < UINT16_MAX:
+        return (clock(data, 16), 0x83)
+    elif clock(data, 32) < UINT16_MAX:
+        return (clock(data, 32), 0x84)
+    elif clock(data, 64) < UINT16_MAX:
+        return (clock(data, 64), 0x85)
+    elif clock(data, 128) < UINT16_MAX:
+        return (clock(data, 128), 0x86)
+    else:
+        return (clock(data, 256), 0x87)
+
+def get_timer1_prescalar(data):
+    CLOCK_SPEED = 10_000_000
+    UINT16_MAX = 65535
+    clock = lambda data, ps: int(CLOCK_SPEED / (2 * data[0] * ps))
+    if clock(data, 1) < UINT16_MAX:
+        return (clock(data, 1), 0x81)
+    elif clock(data, 2) < UINT16_MAX:
+        return (clock(data, 2), 0x91)
+    elif clock(data, 4) < UINT16_MAX:
+        return (clock(data, 4), 0xA1)
+    else:
+        return (clock(data, 8), 0xB1)
+
 
 
 with open("audio.h", "w") as f: 
     f.write(f"#define C1_LENGTH {len(new_channel1)}\n")
     f.write(f"const unsigned short c1_clocks[{len(new_channel1)}] = {{")
-    max_clocks = 0
+    prescalars = []
     for data in new_channel1:
-        clocks = int(data[2] * 10_000_000 / 128)
-        if clocks > max_clocks:
-            max_clocks = clocks
-        if clocks > 65555:
-            clocks = 65500
+        (clocks, prescalar) = get_timer0_prescalar(data)
+        prescalars.append(prescalar)
         f.write(f"{clocks},\n") 
-    print("Longest Duration: ", max_clocks)
+    f.write('};\n')
+
+    f.write(f"const unsigned char c1_prescalars[{len(new_channel1)}] = {{")
+    for scalar in prescalars:
+        f.write(f"{scalar},\n") 
     f.write('};\n')
 
 
     f.write(f"const unsigned short c1_notes[{len(new_channel1)}] = {{")
     max_note = 0
+    prescalars = []
     for data in new_channel1:
         if data[0] == 0:
             clocks = 0
         else:
-            clocks = int(10000000 / (2 * data[0]))
-            if clocks > max_note:
-                max_note = clocks
+            (clocks, prescalar) = get_timer1_prescalar(data)
+            prescalars.append(prescalar)
             f.write(f"{clocks},\n") 
-    print("Longest note", max_note)
+    f.write('};\n')
+
+
+    f.write(f"const unsigned char c1_notes_scalars[{len(new_channel1)}] = {{")
+    for scalar in prescalars:
+        f.write(f"{scalar},\n") 
     f.write('};\n')
 
 
