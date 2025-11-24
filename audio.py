@@ -2,29 +2,55 @@ from collections import Counter
 
 import mido
 import os
-import math
-
 
 class Song:
-    def __init__(self, file_name: str, name: str, channel: int):
+    def __init__(self, file_name: str, name: str, channel: int, 
+                 add_rests = True, fix_overlap = False, rest_tol = 1000, secondary_channels = [], overlap_tolerance = 0):
         self.file_path = "songs" + os.path.sep + file_name
         self.name = name 
         self.channel = channel
+        self.file_name = file_name.replace(".mid", "")
+        self.add_rests = add_rests
+        self.fix_overlap = fix_overlap 
+        self.rest_tolerance = rest_tol
+        self.secondary_channels = secondary_channels
+        self.overlap_tolerance = overlap_tolerance
+
+class AudioData:
+    ticks_per_beat = 0
+    def __init__(self, freq: float, start: int, duration: int, velocity: int, tempo: int):
+        self.freq = freq
+        self.start = start # start time in ticks
+        self.duration = duration  # duration in ticks
+        self.velocity = velocity 
+        self.time_duration = (tempo * duration * 10) / (AudioData.ticks_per_beat) #number of pic clocks
+        self.tempo = tempo
+
+    def update_duration(self, duration: int):
+        self.duration = duration
+        self.time_duration = (self.tempo * duration * 10) / (AudioData.ticks_per_beat) #number of pic clocks
+
+    def __str__(self):
+       return f"freq: {self.freq}, start: {self.start}, duration: {self.duration}, time: {self.time_duration}" 
+ 
+REST_FREQ = 40_000
+REST = 10_000_000 / (REST_FREQ * 2)
 
 songs = []
-songs.append(Song("twelvedays.mid", "12 Days of Xmas", 6))
-songs.append(Song("carolofbells.mid", "Carol of the Bells", 0))
+
+
 songs.append(Song("jinglebells.mid", "Jingle Bells", 0))
-songs.append(Song("Allwantisyou.mid", "All I want for Xmas is you", 3))
-songs.append(Song("rockingtree.mid", "Rocking Around Xmas Tree", 0)) # doesn't sound bad if we filter freq < 250 and don't allow rests
-songs.append(Song("frosty.mid", "Frosty the Snowman", 1))  #allow rests
-songs.append(Song("rudolph.mid", "Rudolph", 0))  #needs work sounds okay without rests
-songs.append(Song("letitsnow.mid", "Let it snow", 6))  
-songs.append(Song("bellrock.mid", "Jingle Bell Rock", 3))  #needs work sounds okay with rests
-songs.append(Song("herecomes.mid", "Here Comes Santa Claus", 0)) #rests
-songs.append(Song("hollyjolly.mid", "Holly Jolly Xmas", 6)) #sounds okay with rests
-songs.append(Song("wishyou.mid", "We Wish you a merry Xmas", 0))
 songs.append(Song("sleighride.mid", "Sleigh Ride", 2))
+songs.append(Song("hollyjolly.mid", "Holly Jolly Xmas", 6, rest_tol=20, secondary_channels=[5]))
+songs.append(Song("herecomes.mid", "Here Comes Santa", 0, rest_tol=80)) 
+songs.append(Song("letitsnow.mid", "Let it snow", 5, rest_tol=50))  
+songs.append(Song("bellrock.mid", "Jingle Bell Rock", 3, rest_tol=40)) 
+songs.append(Song("rudolph.mid", "Rudolph", 0, fix_overlap=True))
+songs.append(Song("frosty.mid", "Frosty", 1))
+songs.append(Song("Allwantisyou.mid", "All I want for Xmas is you", 3, add_rests=False))
+songs.append(Song("twelvedays.mid", "12 Days of Xmas", 6))
+songs.append(Song("carolofbells.mid", "Carol of Bells", 0, add_rests=False, overlap_tolerance=1))
+songs.append(Song("wishyou.mid", "Wish merry Xmas", 2, rest_tol=120))
 
 
 
@@ -45,73 +71,67 @@ notes = [
 ]
 
 
-current_song = songs[12]
-mid = mido.MidiFile(current_song.file_path)
+
+def get_audio_data(current_song: Song) -> list[AudioData]:
+    print(f"Getting Audio data for {current_song.name} from file: {current_song.file_path}")
+
+    mid = mido.MidiFile(current_song.file_path)
+    ticks_per_beat = mid.ticks_per_beat
+    AudioData.ticks_per_beat = ticks_per_beat
+
+    #useful for seeing which instruments are on which channels
+    if False: 
+        for i, track in enumerate(mid.tracks):
+            print(f"Track {i}: {track.name}")
+            for msg in track:
+                if msg.type == "program_change":
+                    print(f"  Channel {msg.channel}, Program {msg.program}")
+
+    
+    tempo = 0
+
+    channel_data = []
+
+    active_c1_notes = {}
+
+    merged = mido.merge_tracks(mid.tracks)
+
+    # used to show how many notes are played on each channel
+    channels = [0 for i in range(16)]
+
+    current_time = 0 # current time in seconds
+    current_ticks = 0 #current time in ticks for more accurate timing
+
+    for msg in merged:
+        current_time += mido.tick2second(msg.time, ticks_per_beat, tempo)
+        current_ticks += msg.time
+
+        if msg.type == 'set_tempo':
+            tempo = msg.tempo
+
+        if msg.type == "note_on":
+            channels[msg.channel] += 1
+
+        if msg.type == 'note_on' and msg.velocity > 0:
+            # Start of a note
+            if msg.channel == current_song.channel or msg.channel in current_song.secondary_channels:
+                active_c1_notes[msg.note] = (current_ticks, msg.velocity)
+
+        elif (msg.type == 'note_off') or (msg.type == 'note_on' and msg.velocity == 0):
+            if msg.note in active_c1_notes:
+                (start, velocity) = active_c1_notes.pop(msg.note)
+                duration = current_ticks - start
+                freq = notes[msg.note]
+                channel_data.append(AudioData(freq, start, duration, velocity, tempo)) 
+
+    # ensure the data is in the correct order
+    channel_data.sort(key= lambda d: d.start)
+    print("Channel Info:", channels)
+    print(f"Song Length: {int(current_time)} seconds")
+    return channel_data
 
 
-ticks_per_beat = mid.ticks_per_beat
-tempo = 0
-
-channel1 = 0
-
-channel1_data = []
-
-class AudioData:
-    def __init__(self, freq: float, start: int, duration: int, velocity: int, tempo: int, time_duration: float):
-        self.freq = freq
-        self.start = start # start time in ticks
-        self.duration = duration  # duration in ticks
-        self.velocity = velocity 
-        self.time_duration = time_duration #number of pic clocks
-        self.tempo = tempo
-    def __str__(self):
-       return f"freq: {self.freq}, start: {self.start}, duration: {self.duration}, time: {self.time_duration}" 
-        
-
-c1_time = 0
-
-current_time = 0
-active_c1_notes = {}
-
-merged = mido.merge_tracks(mid.tracks)
-
-channels = [0 for i in range(16)]
-
-current_ticks = 0
-
-for msg in merged:
-    current_time += mido.tick2second(msg.time, ticks_per_beat, tempo)
-    current_ticks += msg.time
-
-
-    if msg.type == 'set_tempo':
-        tempo = msg.tempo
-
-    if msg.type == "note_on":
-        channels[msg.channel] += 1
-
-    if msg.type == 'note_on' and msg.velocity > 0:
-        # Start of a note
-        if msg.channel == current_song.channel:
-            active_c1_notes[msg.note] = (current_ticks, msg.velocity)
-
-    elif (msg.type == 'note_off') or (msg.type == 'note_on' and msg.velocity == 0):
-        if msg.note in active_c1_notes:
-            (start, velocity) = active_c1_notes.pop(msg.note)
-            duration = current_ticks - start
-            freq = notes[msg.note]
-            channel1_data.append(AudioData(freq, start, duration, velocity, tempo, (tempo * duration * 10) / (ticks_per_beat))) 
-
-for i, track in enumerate(mid.tracks):
-    print(f"Track {i}: {track.name}")
-    for msg in track:
-        if msg.type == "program_change":
-            print(f"  Channel {msg.channel}, Program {msg.program}")
-
-channel1_data.sort(key= lambda d: d.start)
-print(channels)
-
-def remove_chords(channel_data):
+def remove_chords(song: Song, channel_data: list[AudioData]) -> list[AudioData]:
     melody = []
 
     for note in channel_data:
@@ -122,6 +142,7 @@ def remove_chords(channel_data):
         end = start + duration
 
         tick_tolerance = 5
+        rest_tolerance = song.rest_tolerance
 
         if not melody:
             melody.append(note)
@@ -132,16 +153,30 @@ def remove_chords(channel_data):
         prev_velocity = melody[-1].velocity
         prev_end = prev_start + melody[-1].duration
 
-
-
         # notes don't overlap
-        if start > prev_end:
+        if start >= prev_end + song.overlap_tolerance:
             # handle rests
-            if start - prev_end > tick_tolerance and True:
-                tempo = melody[-1].tempo
-                melody.append(AudioData(40000, 0,0,0, tempo, (tempo * (start - prev_end) * 10) / (ticks_per_beat)))
+            if start - prev_end > tick_tolerance and song.add_rests:
+                tempo = note.tempo
+                diff = start - prev_end
+                # try to mimic natural fade
+                if diff > rest_tolerance:
+                    melody[-1].update_duration(melody[-1].duration + diff - rest_tolerance)
+                    melody.append(AudioData(REST_FREQ, 0,duration=rest_tolerance,velocity=0,tempo=tempo))
+                else:
+                    melody.append(AudioData(REST_FREQ, 0,duration=diff,velocity=0,tempo=tempo))
             melody.append(note)
             continue
+
+        # songs like rudolph have overlapping notes for some reason
+        # despite the fact its played on a saxophone so I try to fix it here
+        if song.fix_overlap and prev_end > start:
+            melody[-1].update_duration(melody[-1].duration - (prev_end - start))
+            note.update_duration((note.duration + (start - prev_end)))
+            melody.append(note)
+            continue
+
+
 
         # only play one note in a chord
         if start == prev_start:
@@ -157,17 +192,25 @@ def remove_chords(channel_data):
             melody.append(note)
             continue
 
-    return melody    
 
+    return melody 
 
-print(f"Song Length: {int(current_time)} seconds")
-new_channel1 = remove_chords(channel1_data)
+def get_time(audio_data: list[AudioData]) -> str:
+    time_seconds = 0
 
+    total_time_duration = 0
 
-print(len(channel1_data), len(new_channel1))
+    for data in audio_data:
+        total_time_duration += data.time_duration 
 
-for i in range(50):
-    print(channel1_data[i], new_channel1[i])
+    time_seconds = total_time_duration * 100 * 10 ** (-9)
+    
+    seconds = round(time_seconds)
+    minutes = seconds // 60
+    seconds = seconds % 60
+    print(time_seconds, f"{minutes}:{seconds:02}")
+
+    return f"{minutes}:{seconds:02}" 
 
 
 def get_timer0_prescalar(data):
@@ -204,40 +247,88 @@ def get_timer1_prescalar(data):
     else:
         return (clock(data, 8), 0xB1)
 
-
-
-with open("audio.h", "w") as f: 
-    f.write(f"#define C1_LENGTH {len(new_channel1)}\n")
-    f.write(f"const unsigned short c1_clocks[{len(new_channel1)}] = {{")
+def output_audio_data(file, song: Song, audio_data: list[AudioData]):
+    file.write(f"const unsigned short {song.file_name}_clocks[{len(audio_data)}] = {{")
     prescalars = []
-    for data in new_channel1:
+    for data in audio_data:
         (clocks, prescalar) = get_timer0_prescalar(data)
         prescalars.append(prescalar)
-        f.write(f"{int(clocks)},\n") 
-    f.write('};\n')
+        file.write(f"{int(clocks)},\n") 
+    file.write('};\n')
 
     print(f"Duration Prescalars: {Counter(prescalars)}")
 
-    f.write(f"const unsigned char c1_prescalars[{len(new_channel1)}] = {{")
+    file.write(f"const unsigned char {song.file_name}_prescalars[{len(audio_data)}] = {{")
     for scalar in prescalars:
-        f.write(f"{scalar},\n") 
-    f.write('};\n')
+        file.write(f"{scalar},\n") 
+    file.write('};\n')
 
 
-    f.write(f"const unsigned short c1_notes[{len(new_channel1)}] = {{")
+    file.write(f"const unsigned short {song.file_name}_notes[{len(audio_data)}] = {{")
     max_note = 0
     prescalars = []
-    for data in new_channel1:
+    for data in audio_data:
         (clocks, prescalar) = get_timer1_prescalar(data)
         prescalars.append(prescalar)
-        f.write(f"{clocks},\n") 
-    f.write('};\n')
+        file.write(f"{clocks},\n") 
+    file.write('};\n')
 
 
-    print(f"Duration Prescalars: {Counter(prescalars)}")
+    print(f"Notes Prescalars: {Counter(prescalars)}")
 
 
-    f.write(f"const unsigned char c1_notes_scalars[{len(new_channel1)}] = {{")
-    for scalar in prescalars:
-        f.write(f"{scalar},\n") 
-    f.write('};\n') 
+#main
+with open("audio.h", 'w') as f:
+    times = []
+    audio_data_lengths = []
+    f.write(f"#define REST {int(REST)}\n")
+    f.write(f"#define TOTAL_SONGS {len(songs)}\n")
+    f.write("const char* SONG_NAMES[] = {\n")
+    for song in songs:
+        f.write(f"\"{song.name}\",")
+    f.write("};\n")
+
+    TESTING = False 
+    songs_cnt = len(songs)
+    if TESTING:
+        songs_cnt = 1
+
+
+    for i in range(songs_cnt):
+        song = songs[i]
+        audio_data = get_audio_data(song)
+        cleaned_audio_data = remove_chords(song, audio_data)
+        times.append(get_time(cleaned_audio_data))
+        audio_data_lengths.append(len(cleaned_audio_data))
+        print(len(audio_data), len(cleaned_audio_data))
+        output_audio_data(f, song, cleaned_audio_data)
+
+    if TESTING:
+        f.write("#define TESTING 1\n")
+        songs = [songs[0]]
+
+    f.write("unsigned short SONG_LENGTHS[] = {")
+    for i in range(0, len(audio_data_lengths)):
+        f.write(f"{audio_data_lengths[i]},") 
+    f.write("};\n")
+
+    f.write("const char* SONG_TIMES[] = {")
+    for time in times:
+        f.write(f"\"{time}\",")
+    f.write("};\n")
+
+
+    f.write("const unsigned short* SONG_CLOCKS[] = {")
+    for song in songs:
+        f.write(f"{song.file_name}_clocks,") 
+    f.write("};\n")
+
+    f.write("const unsigned char* SONG_PRESCALARS[] = {")
+    for song in songs:
+        f.write(f"{song.file_name}_prescalars,") 
+    f.write("};\n")
+
+    f.write("const unsigned short* SONG_NOTES[] = {")
+    for song in songs:
+        f.write(f"{song.file_name}_notes,") 
+    f.write("};\n")
