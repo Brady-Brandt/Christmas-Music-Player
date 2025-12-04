@@ -5,7 +5,8 @@ import os
 
 class Song:
     def __init__(self, file_name: str, name: str, channel: int, 
-                 add_rests = True, fix_overlap = False, rest_tol = 1000, secondary_channels = [], overlap_tolerance = 0):
+                 time_correction = 0, add_rests = True, fix_overlap = False, rest_tol = 1000, secondary_channels = [],
+                   overlap_tolerance = 0):
         self.file_path = "songs" + os.path.sep + file_name
         self.name = name 
         self.channel = channel
@@ -15,6 +16,7 @@ class Song:
         self.rest_tolerance = rest_tol
         self.secondary_channels = secondary_channels
         self.overlap_tolerance = overlap_tolerance
+        self.time_correction = time_correction
 
 class AudioData:
     ticks_per_beat = 0
@@ -36,22 +38,24 @@ class AudioData:
 REST_FREQ = 40_000
 REST = 10_000_000 / (REST_FREQ * 2)
 
+TESTING = False
+
 songs = []
 
 
-songs.append(Song("jinglebells.mid", "Jingle Bells", 0))
-songs.append(Song("sleighride.mid", "Sleigh Ride", 2))
-songs.append(Song("hollyjolly.mid", "Holly Jolly Xmas", 6, rest_tol=20, secondary_channels=[5]))
-songs.append(Song("herecomes.mid", "Here Comes Santa", 0, rest_tol=80)) 
-songs.append(Song("letitsnow.mid", "Let it snow", 5, rest_tol=50))  
-songs.append(Song("bellrock.mid", "Jingle Bell Rock", 3, rest_tol=40)) 
-songs.append(Song("rudolph.mid", "Rudolph", 0, fix_overlap=True))
-songs.append(Song("frosty.mid", "Frosty", 1))
-songs.append(Song("Allwantisyou.mid", "All I want for Xmas is you", 3, add_rests=False))
-songs.append(Song("twelvedays.mid", "12 Days of Xmas", 6))
 songs.append(Song("carolofbells.mid", "Carol of Bells", 0, add_rests=False, overlap_tolerance=1))
+songs.append(Song("deck.mid", "Deck the Halls", 2, time_correction=-1))
+songs.append(Song("hollyjolly.mid", "Holly Jolly Xmas", 6, time_correction=-3, rest_tol=20, secondary_channels=[5]))
+songs.append(Song("jinglebells.mid", "Jingle Bells", 0, time_correction=-1))
+songs.append(Song("herecomes.mid", "Here Comes Santa", 0, rest_tol=80, time_correction=-1))
+songs.append(Song("letitsnow.mid", "Let it snow", 5, rest_tol=50, time_correction=6))
+songs.append(Song("bellrock.mid", "Jingle Bell Rock", 3, rest_tol=40))
+songs.append(Song("rudolph.mid", "Rudolph", 0, fix_overlap=True, time_correction=3))
+songs.append(Song("frosty.mid", "Frosty", 1, time_correction=4))
+songs.append(Song("Allwantisyou.mid", "All I want for Xmas is you", 3, add_rests=False, time_correction=6))
 songs.append(Song("wishyou.mid", "Wish merry Xmas", 2, rest_tol=120))
-
+songs.append(Song("twelvedays.mid", "12 Days of Xmas", 6))
+songs.append(Song("sleighride.mid", "Sleigh Ride", 2))
 
 
 notes = [
@@ -80,7 +84,7 @@ def get_audio_data(current_song: Song) -> list[AudioData]:
     AudioData.ticks_per_beat = ticks_per_beat
 
     #useful for seeing which instruments are on which channels
-    if False: 
+    if TESTING: 
         for i, track in enumerate(mid.tracks):
             print(f"Track {i}: {track.name}")
             for msg in track:
@@ -195,16 +199,7 @@ def remove_chords(song: Song, channel_data: list[AudioData]) -> list[AudioData]:
 
     return melody 
 
-def get_time(audio_data: list[AudioData]) -> str:
-    time_seconds = 0
-
-    total_time_duration = 0
-
-    for data in audio_data:
-        total_time_duration += data.time_duration 
-
-    time_seconds = total_time_duration * 100 * 10 ** (-9)
-    
+def get_time(time_seconds: float) -> str: 
     seconds = round(time_seconds)
     minutes = seconds // 60
     seconds = seconds % 60
@@ -216,45 +211,46 @@ def get_time(audio_data: list[AudioData]) -> str:
 def get_timer0_prescalar(data):
     UINT16_MAX = 65535
     if data.time_duration < UINT16_MAX:
-        return (data.time_duration, 0x88)
-    elif data.time_duration / 2 < UINT16_MAX:
-        return (data.time_duration / 2, 0x80)
-    elif data.time_duration / 4 < UINT16_MAX:
-        return (data.time_duration / 4, 0x81)
-    elif data.time_duration / 8 < UINT16_MAX:
-        return (data.time_duration / 8, 0x82)
-    elif data.time_duration / 16 < UINT16_MAX:
-        return (data.time_duration / 16, 0x83)
-    elif data.time_duration / 32 < UINT16_MAX:
-        return (data.time_duration / 32, 0x84)
-    elif data.time_duration / 64 < UINT16_MAX:
-        return (data.time_duration / 64, 0x85)
-    elif data.time_duration / 128 < UINT16_MAX:
-        return (data.time_duration / 128, 0x86)
+        return (data.time_duration, 1,0x88)
+    elif data.time_duration // 2 < UINT16_MAX:
+        return (data.time_duration // 2, 2,0x80)
+    elif data.time_duration // 4 < UINT16_MAX:
+        return (data.time_duration // 4, 4,0x81)
+    elif data.time_duration // 8 < UINT16_MAX:
+        return (data.time_duration // 8, 8,0x82)
+    elif data.time_duration // 16 < UINT16_MAX:
+        return (data.time_duration // 16, 16,0x83)
+    elif data.time_duration // 32 < UINT16_MAX:
+        return (data.time_duration // 32, 32,0x84)
+    elif data.time_duration // 64 < UINT16_MAX:
+        return (data.time_duration // 64, 64,0x85)
+    elif data.time_duration // 128 < UINT16_MAX:
+        return (data.time_duration // 128, 128,0x86)
     else:
-        return (data.time_duration / 256, 0x87)
+        return (data.time_duration // 256, 256, 0x87)
 
-def get_timer1_prescalar(data):
-    CLOCK_SPEED = 10_000_000
-    UINT16_MAX = 65535
-    clock = lambda data, ps: int(CLOCK_SPEED / (2 * data.freq * ps))
-    if clock(data, 1) < UINT16_MAX:
-        return (clock(data, 1), 0x81)
-    elif clock(data, 2) < UINT16_MAX:
-        return (clock(data, 2), 0x91)
-    elif clock(data, 4) < UINT16_MAX:
-        return (clock(data, 4), 0xA1)
-    else:
-        return (clock(data, 8), 0xB1)
-
-def output_audio_data(file, song: Song, audio_data: list[AudioData]):
+def output_audio_data(file, song: Song, audio_data: list[AudioData]) -> float:
     file.write(f"const unsigned short {song.file_name}_clocks[{len(audio_data)}] = {{")
     prescalars = []
+
+    CLOCK_SPEED = 10_000_000
+
+    time_seconds = 0
     for data in audio_data:
-        (clocks, prescalar) = get_timer0_prescalar(data)
+        (clocks, scalar, prescalar) = get_timer0_prescalar(data)
+        clocks = int(clocks) 
+ 
+        # could insert another note instead of clamping
+        # but the songs sound just fine as is
+        if clocks > 65535:
+            clocks = 65535
+        
+        time_seconds += (clocks * scalar) / CLOCK_SPEED 
         prescalars.append(prescalar)
         file.write(f"{int(clocks)},\n") 
     file.write('};\n')
+
+    time_seconds += song.time_correction
 
     print(f"Duration Prescalars: {Counter(prescalars)}")
 
@@ -265,16 +261,11 @@ def output_audio_data(file, song: Song, audio_data: list[AudioData]):
 
 
     file.write(f"const unsigned short {song.file_name}_notes[{len(audio_data)}] = {{")
-    max_note = 0
-    prescalars = []
     for data in audio_data:
-        (clocks, prescalar) = get_timer1_prescalar(data)
-        prescalars.append(prescalar)
+        clocks = int(CLOCK_SPEED / (2 * data.freq))
         file.write(f"{clocks},\n") 
     file.write('};\n')
-
-
-    print(f"Notes Prescalars: {Counter(prescalars)}")
+    return time_seconds
 
 
 #main
@@ -288,7 +279,6 @@ with open("audio.h", 'w') as f:
         f.write(f"\"{song.name}\",")
     f.write("};\n")
 
-    TESTING = False 
     songs_cnt = len(songs)
     if TESTING:
         songs_cnt = 1
@@ -298,10 +288,10 @@ with open("audio.h", 'w') as f:
         song = songs[i]
         audio_data = get_audio_data(song)
         cleaned_audio_data = remove_chords(song, audio_data)
-        times.append(get_time(cleaned_audio_data))
         audio_data_lengths.append(len(cleaned_audio_data))
         print(len(audio_data), len(cleaned_audio_data))
-        output_audio_data(f, song, cleaned_audio_data)
+        time_seconds = output_audio_data(f, song, cleaned_audio_data)
+        times.append(get_time(time_seconds))
 
     if TESTING:
         f.write("#define TESTING 1\n")
