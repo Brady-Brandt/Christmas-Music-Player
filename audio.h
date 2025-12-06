@@ -17976,7 +17976,7 @@ const unsigned short sleighride_notes[1243] = {3579,
 4256,
 };
 unsigned short SONG_LENGTHS[] = {286,110,213,155,210,178,560,502,529,494,343,1155,1243,};
-const char* SONG_TIMES[] = {"1:23","0:18","0:47","0:45","0:34","0:42","1:49","2:03","2:11","3:00","1:07","3:57","2:35",};
+const char* SONG_TIMES[] = {"1:23","0:18","0:47","0:45","0:34","0:42","1:49","2:03","2:11","3:00","1:07","3:50","2:35",};
 const unsigned short* SONG_CLOCKS[] = {carolofbells_clocks,deck_clocks,hollyjolly_clocks,jinglebells_clocks,herecomes_clocks,letitsnow_clocks,bellrock_clocks,rudolph_clocks,frosty_clocks,Allwantisyou_clocks,wishyou_clocks,twelvedays_clocks,sleighride_clocks,};
 const unsigned char* SONG_PRESCALARS[] = {carolofbells_prescalars,deck_prescalars,hollyjolly_prescalars,jinglebells_prescalars,herecomes_prescalars,letitsnow_prescalars,bellrock_prescalars,rudolph_prescalars,frosty_prescalars,Allwantisyou_prescalars,wishyou_prescalars,twelvedays_prescalars,sleighride_prescalars,};
 const unsigned short* SONG_NOTES[] = {carolofbells_notes,deck_notes,hollyjolly_notes,jinglebells_notes,herecomes_notes,letitsnow_notes,bellrock_notes,rudolph_notes,frosty_notes,Allwantisyou_notes,wishyou_notes,twelvedays_notes,sleighride_notes,};

@@ -54,7 +54,7 @@ songs.append(Song("rudolph.mid", "Rudolph", 0, fix_overlap=True, time_correction
 songs.append(Song("frosty.mid", "Frosty", 1, time_correction=4))
 songs.append(Song("Allwantisyou.mid", "All I want for Xmas is you", 3, add_rests=False, time_correction=6))
 songs.append(Song("wishyou.mid", "Wish merry Xmas", 2, rest_tol=120))
-songs.append(Song("twelvedays.mid", "12 Days of Xmas", 6))
+songs.append(Song("twelvedays.mid", "12 Days of Xmas", 6, time_correction=-7))
 songs.append(Song("sleighride.mid", "Sleigh Ride", 2))
 
 
