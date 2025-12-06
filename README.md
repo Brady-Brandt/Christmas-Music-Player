@@ -31,6 +31,12 @@ that gets included with the rest of the project.
 
 [Python Code](https://github.com/Brady-Brandt/Christmas-Music-Player/blob/main/audio.py)
 
+## Demo
+If Youtube chapters are not working, the timestamps to all songs are in the description.
+
+[Link](https://youtu.be/PZrsWc5uusg)
+
+
 ## Song List
 - Carol of the Bells
 - Deck the Halls
