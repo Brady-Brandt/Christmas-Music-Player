@@ -1,7 +1,7 @@
 # Christmas Music Player
 
 ## Requirements
-Play a number of Christmas Songs on with a PIC processor using a speaker.
+Play a number of Christmas Songs on PIC processor using just a speaker.
 ### Inputs:
   - RB0 -> Pause/Play
   - RB1 -> Reset Song
@@ -20,10 +20,12 @@ Play a number of Christmas Songs on with a PIC processor using a speaker.
   - TIMER3 -> Keeps track of time
 
 ## Hardware and Software
+![Flowchart](https://github.com/Brady-Brandt/Christmas-Music-Player/blob/main/hardware.png)
 ### Flowchart
 ![Flowchart](https://github.com/Brady-Brandt/Christmas-Music-Player/blob/main/flowchart.jpg)
-### Code:
+### Code
 [C Code](https://github.com/Brady-Brandt/Christmas-Music-Player/blob/main/player.c)
+
 
 I also used Python to parse midi files (a special format digital synthesizers use) to create the actual music.
 This made it way quicker and easier for me to add new songs. I parse the files in Python and generate C code (audio.h)
@@ -34,7 +36,7 @@ that gets included with the rest of the project.
 ## Demo
 If Youtube chapters are not working, the timestamps to all songs are in the description.
 
-[Link](https://youtu.be/PZrsWc5uusg)
+https://youtu.be/PZrsWc5uusg
 
 
 ## Song List
